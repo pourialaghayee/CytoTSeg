@@ -18,7 +18,7 @@ The framework optimizes the trade-off between segmentation quality and computati
 
 ## 📊 Results & Visualizations
 
-### Performance on ETH-CLL Dataset
+### 1. Performance on ETH-CLL Dataset
 Despite their significantly reduced parameter count, CytoTSeg student models successfully capture the complex morphological features required for disease classification. 
 
 Below are the segmentation results from the **Best Student Model** compared across malignant (CLL) and benign (Control) samples:
@@ -29,6 +29,15 @@ Below are the segmentation results from the **Best Student Model** compared acro
 | **Control (Healthy)** | ![Control 6](Figures/Control_6_comparison.png) | ![Control 7](Figures/Control_7_comparison.png) |
 
 > **Key Finding:** The distilled student models maintain high fidelity to the cell boundaries and morphological nuances of both healthy and leukemic cells, proving that highly compressed models can remain effective for downstream clinical phenotyping.
+
+### 2. Inference Speed & Real-Time Deployment
+A critical requirement for live microfluidic sorting and acquisition-speed analysis is rapid inference. CytoTSeg's lightweight architecture ensures that models run exceptionally fast on standard hardware. 
+
+As shown in the live application benchmarks below, the model achieves high-speed processing on CPUs and drops to **just a few milliseconds per frame on GPUs**, making it perfectly suited for near-real-time clinical diagnostics.
+
+| Live Application Benchmark 1 | Live Application Benchmark 2 |
+| :---: | :---: |
+| ![Benchmark 1](Figures/Benchmark_CLL_6_2.png) | ![Benchmark 2](Figures/Benchmark_CLL_6_45.png) |
 
 ---
 
