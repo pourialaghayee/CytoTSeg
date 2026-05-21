@@ -1,9 +1,61 @@
-# CytoTSeg
+# CytoTSeg: Teacher-Student Segmentation for High-Throughput Cytometry
 
-CytoTSeg is a teacher-student segmentation framework for bright-field cytometry, deformability cytometry, and imaging flow cytometry. It is designed for high-throughput single-cell imaging settings in which segmentation must be both accurate and computationally efficient, while still preserving the morphological information required for downstream biological analysis.
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20326516.svg)](https://doi.org/10.5281/zenodo.20326516)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-The framework combines two main ideas. First, candidate teacher models are benchmarked offline against expert-annotated reference masks to identify a strong segmentation source. Second, the selected teacher is used to generate pseudo-labels that supervise lightweight student networks through distillation. This enables the transfer of segmentation behaviour from a high-capacity model to compact U-Net-based students that run much faster and are better suited for practical deployment in acquisition-speed or near-real-time workflows.
+**CytoTSeg** is a robust teacher-student segmentation framework specifically engineered for bright-field, deformability, and imaging flow cytometry. It addresses the "bottleneck" of high-throughput single-cell analysis: the requirement for pixel-level accuracy at acquisition-speed inference rates.
 
-A central motivation of CytoTSeg is that segmentation in cytometry is not only a pixel-level task. The predicted masks directly influence morphology-derived measurements such as area, deformation, aspect ratio, solidity, and related descriptors, which are later used for phenotyping, classification, and disease-related analysis. For this reason, the framework evaluates student models not only by overlap-based segmentation metrics such as Dice and IoU, but also by their ability to preserve biologically meaningful morphology features and downstream classification performance.
+---
 
-Across multiple public datasets spanning heterogeneous imaging conditions, cytometry modalities, and disease contexts, CytoTSeg supports systematic analysis of the trade-off between segmentation quality, model size, inference speed, and downstream utility. In particular, it is built to answer practical questions such as how small a segmentation model can become before important morphology information is lost, and whether highly compressed student models can still remain useful for feature-based downstream tasks.
+## 🚀 Core Methodology
+
+The framework optimizes the trade-off between segmentation quality and computational efficiency through a two-stage distillation process:
+
+1.  **Teacher Selection:** High-capacity models (the "Teachers") are benchmarked offline against expert-annotated reference masks to identify the most accurate segmentation source.
+2.  **Knowledge Distillation:** The selected teacher generates pseudo-labels to supervise lightweight, compact **U-Net-based student networks**. 
+
+This allows for the deployment of models that are small enough for **near-real-time workflows** while maintaining the morphological fidelity required for downstream biological analysis.
+
+---
+
+## 🔬 Beyond Pixels: Morphology Preservation
+
+In cytometry, segmentation directly dictates the biological measurements used for diagnosis. CytoTSeg evaluates performance across three critical tiers:
+
+* **Overlap Metrics:** Standard Dice and IoU coefficients for mask accuracy.
+* **Morphological Fidelity:** Preservation of area, deformation, aspect ratio, and solidity.
+* **Downstream Utility:** Performance in classification tasks and disease-related phenotyping.
+
+---
+
+## 📊 Benchmarking Datasets
+
+CytoTSeg has been validated across heterogeneous imaging modalities and disease contexts. The framework utilizes the following key datasets:
+
+| Dataset Name | Modality / Disease Context | Source |
+| :--- | :--- | :--- |
+| **ETH-CLL** | Viscoelastic deformability (CLL/Healthy) | [DOI: 10.5281/zenodo.20326516](https://doi.org/10.5281/zenodo.20326516) |
+| **Guck-MDS** | RT-DC (Myelodysplastic Syndromes) | [Zenodo: 5655848](https://zenodo.org/records/5655848) |
+| **Guck-WBC** | White Blood Cell classification | [MPL Repository](https://dcor.mpl.mpg.de/organization/raw_data_wbc_classification) |
+| **ICellCNN-SS** | High-throughput imaging screening | [Zenodo: 5391155](https://zenodo.org/records/5391155) |
+
+---
+
+## 🛠 Usage & Research Goals
+
+This repository is built to answer practical questions for the cytometry and microfluidics community:
+* **Model Compression:** How small can a segmentation model become before critical biological information is lost?
+* **Real-time Deployment:** Enabling high-fidelity segmentation in near-real-time microfluidic workflows.
+* **Feature Reliability:** Ensuring that highly compressed models still provide stable features for downstream classification.
+
+## ✍️ Authors & Affiliations
+
+Developed by members of the **DeMello Group** at **ETH Zürich**, Institute for Chemical and Bioengineering.
+
+## 📄 Citation
+
+If you use this framework or the associated ETH-CLL dataset in your research, please cite:
+
+> [Full Paper Citation Here once published]
+> 
+> **Dataset:** ETH-CLL (2026). High-throughput viscoelastic microfluidic mechanophenotyping data. Zenodo. https://doi.org/10.5281/zenodo.20326516
