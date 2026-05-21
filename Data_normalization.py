@@ -19,9 +19,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # CONFIGURATION
 # ============================================================================
 
-INPUT_PATH      = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/Guck2025"
-INPUT_PKL       = "patient_data_cyto2_finetuned_cellposemastermodel.pkl"
-OUTPUT_PKL      = "patient_data_cyto2_finetuned_cellposemastermodel.pkl"
+INPUT_PATH      = "/home/ubuntu/CytoTSeg-code/Preparing_ETH_data_for_submission/"
+INPUT_PKL       = "_Data_bank_400_mbar.pkl"
+OUTPUT_PKL      = "_Data_bank_400_mbar_normalized.pkl"
 
 APPLY_CLAHE     = False    # No CLAHE — global percentile is enough for flow cytometry
 PERCENTILE_LOW  = 1.0      # Cellpose default
