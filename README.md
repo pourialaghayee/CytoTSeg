@@ -14,13 +14,27 @@ The framework optimizes the trade-off between segmentation quality and computati
 1.  **Teacher Selection:** High-capacity models (the "Teachers") are benchmarked offline against expert-annotated reference masks to identify the most accurate segmentation source.
 2.  **Knowledge Distillation:** The selected teacher generates pseudo-labels to supervise lightweight, compact **U-Net-based student networks**. 
 
-This allows for the deployment of models that are small enough for **near-real-time workflows** while maintaining the morphological fidelity required for downstream biological analysis.
+---
+
+## 📊 Results & Visualizations
+
+### Performance on ETH-CLL Dataset
+Despite their significantly reduced parameter count, CytoTSeg student models successfully capture the complex morphological features required for disease classification. 
+
+Below are the segmentation results from the **Best Student Model** compared across malignant (CLL) and benign (Control) samples:
+
+| Sample Type | Patient Case 1 | Patient Case 2 |
+| :--- | :--- | :--- |
+| **CLL (Malignant)** | ![CLL 0](Figures/CLL_0_comparison.png) | ![CLL 6](Figures/CLL_6_comparison.png) |
+| **Control (Healthy)** | ![Control 6](Figures/Control_6_comparison.png) | ![Control 7](Figures/Control_7_comparison.png) |
+
+> **Key Finding:** The distilled student models maintain high fidelity to the cell boundaries and morphological nuances of both healthy and leukemic cells, proving that highly compressed models can remain effective for downstream clinical phenotyping.
 
 ---
 
 ## 🔬 Beyond Pixels: Morphology Preservation
 
-In cytometry, segmentation directly dictates the biological measurements used for diagnosis. CytoTSeg evaluates performance across three critical tiers:
+In cytometry, segmentation directly dictates the biological measurements. CytoTSeg evaluates performance across three critical tiers:
 
 * **Overlap Metrics:** Standard Dice and IoU coefficients for mask accuracy.
 * **Morphological Fidelity:** Preservation of area, deformation, aspect ratio, and solidity.
@@ -28,11 +42,9 @@ In cytometry, segmentation directly dictates the biological measurements used fo
 
 ---
 
-## 📊 Benchmarking Datasets
+## 📅 Benchmarking Datasets
 
-CytoTSeg has been validated across heterogeneous imaging modalities and disease contexts. The framework utilizes the following key datasets:
-
-| Dataset Name | Modality / Disease Context | Source |
+| Dataset Name | Modality / Context | Source |
 | :--- | :--- | :--- |
 | **ETH-CLL** | Viscoelastic deformability (CLL/Healthy) | [DOI: 10.5281/zenodo.20326516](https://doi.org/10.5281/zenodo.20326516) |
 | **Guck-MDS** | RT-DC (Myelodysplastic Syndromes) | [Zenodo: 5655848](https://zenodo.org/records/5655848) |
@@ -40,13 +52,6 @@ CytoTSeg has been validated across heterogeneous imaging modalities and disease 
 | **ICellCNN-SS** | High-throughput imaging screening | [Zenodo: 5391155](https://zenodo.org/records/5391155) |
 
 ---
-
-## 🛠 Usage & Research Goals
-
-This repository is built to answer practical questions for the cytometry and microfluidics community:
-* **Model Compression:** How small can a segmentation model become before critical biological information is lost?
-* **Real-time Deployment:** Enabling high-fidelity segmentation in near-real-time microfluidic workflows.
-* **Feature Reliability:** Ensuring that highly compressed models still provide stable features for downstream classification.
 
 ## ✍️ Authors & Affiliations
 
@@ -56,6 +61,6 @@ Developed by members of the **DeMello Group** at **ETH Zürich**, Institute for 
 
 If you use this framework or the associated ETH-CLL dataset in your research, please cite:
 
-> [Full Paper Citation Here once published]
+> [Full Paper Citation Here]
 > 
 > **Dataset:** ETH-CLL (2026). High-throughput viscoelastic microfluidic mechanophenotyping data. Zenodo. https://doi.org/10.5281/zenodo.20326516
