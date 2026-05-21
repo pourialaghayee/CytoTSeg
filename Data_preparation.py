@@ -5,16 +5,18 @@ import pickle
 from pathlib import Path
 
 # ============== CONFIG ==============
-ROOT = Path("/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ETH/march2026/main_data")
+# Change this to point to your actual local dataset folder
+ROOT = Path("/home/ubuntu/CytoTSeg-code/Preparing_ETH_data_for_submission/ETH_dataset_CytoTseg")
 CLL_DIR   = ROOT / "CLL"
 CTRL_DIR  = ROOT / "Control"
 
-IMG_EXT = {".png"}                 # add {".png", ".jpg", ".jpeg", ".tif"} if needed
+IMG_EXT = {".png"}                 
 FREQ_RE = re.compile(r'(?<!\d)(400|1500)(?!\d)', re.IGNORECASE)
 
-LOAD_AS_ARRAYS = True              # True: numpy arrays, False: file paths
-OUT_400  = Path("/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ETH/march2026/main_data/_Data_bank_400_mbar.pkl")
-OUT_1500 = Path("/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ETH/march2026/main_data/_Data_bank_1500_mbar.pkl")
+LOAD_AS_ARRAYS = True              
+# The output pickle files will save right alongside your Notebook
+OUT_400  = Path("/home/ubuntu/CytoTSeg-code/Preparing_ETH_data_for_submission/_Data_bank_400_mbar.pkl")
+OUT_1500 = Path("/home/ubuntu/CytoTSeg-code/Preparing_ETH_data_for_submission/_Data_bank_1500_mbar.pkl")
 IMREAD_FLAG = 0  # cv2.IMREAD_GRAYSCALE
 # ===================================
 
