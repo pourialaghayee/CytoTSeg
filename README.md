@@ -64,7 +64,7 @@ In cytometry, segmentation directly dictates the biological measurements. CytoTS
 
 ## ✍️ Authors & Affiliations
 
-Developed by members of the **DeMello Group** at **ETH Zürich**, Institute for Chemical and Bioengineering.
+Developed by members of the **Claassen Group** at **University of Tübingen** and the **DeMello Group** at **ETH Zürich**, Institute for Chemical and Bioengineering.
 
 ## 📄 Citation
 
