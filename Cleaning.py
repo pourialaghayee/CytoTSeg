@@ -22,12 +22,12 @@ DATASET_CONFIG = {
     "icellcnn": dict(diameter=73.0,  min_area_px=2500, min_circ=0.85, max_ar=4.0,  max_def=0.40, edge_filter=False),
 }
 # ============== CONFIG ==============
-DATA_PKL   = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/Guck2025/patient_data_cyto2_finetuned_cellposemastermodel.pkl"
-OUT_PKL    = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/Guck2025/patient_data_cyto2_finetuned_cellposemastermodel_clean.pkl"
+DATA_PKL   = "/home/ubuntu/CytoTSeg-code/Preparing_ETH_data_for_submission/_Data_bank_400_mbar_normalized.pkl"
+OUT_PKL    = "/home/ubuntu/CytoTSeg-code/Preparing_ETH_data_for_submission/_Data_bank_400_mbar_normalized_cleaned.pkl"
 INPUT_KEY  = "cyto2_finetuned"
 OUTPUT_KEY = "cyto2_finetuned_clean"
 
-DATASET    = "guck2025"   # ← change this to switch dataset
+DATASET    = "eth400"   # ← change this to switch dataset
 
 # Border filters (only active when edge_filter=True in DATASET_CONFIG)
 EDGE_BUFFER     = 2
