@@ -37,7 +37,7 @@ As shown in the live application benchmarks below, the model achieves high-speed
 
 | Live Application Benchmark 1 | Live Application Benchmark 2 |
 | :---: | :---: |
-| ![Benchmark 1](Figures/Benchmark_CLL_6_2.png) | ![Benchmark 2](Figures/Benchmark_CLL_6_45.png) |
+| ![Benchmark 1](Figures/Benchmark_CLL_6_2.png) | ![Benchmark 2](Figures/Benchmark_ETH400_CLL_2_55.png) |
 
 ---
 
