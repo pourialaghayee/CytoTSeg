@@ -38,8 +38,8 @@ from optuna.visualization.matplotlib import (
 # CONFIGURATION
 # ============================================================================
 
-PKL_PATH = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ICellCNN/Train_tes_split_smaller_model_normal/Train_data_cyto2_finetuned_clean_SINGLE.pkl"
-WORK_DIR = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ICellCNN/Train_tes_split_smaller_model_normal"
+PKL_PATH = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ETH/Paper_data/ETH_dataset_CytoTseg/Train_Test_Split/Train_data_cyto2_finetuned_400_clean_SINGLE.pkl"
+WORK_DIR = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ETH/Paper_data/ETH_dataset_CytoTseg/Train_Test_Split"
 
 DEVICE   = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 SEED     = 333
