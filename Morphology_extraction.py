@@ -27,13 +27,13 @@ from datetime import datetime
 
 
 class Config:
-    INPUT_PKL      = Path('/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ETH/Paper_data/ETH_dataset_CytoTseg/Train_Test_Split/Test_data_cyto2_finetuned_400_clean_SINGLE_unet_preds_best.pkl')
+    INPUT_PKL      = Path('/home/ubuntu/CytoTSeg-code/Preparing_ETH_data_for_submission/Train_Test_split/Test_data_cyto2_finetuned_400_clean_SINGLE_unet_preds.pkl')
     OUTPUT_ROOT    = INPUT_PKL.parent / 'morphology_analysis_outputs_best400'
     FINAL_DB_OUT   = INPUT_PKL.parent / 'Test_data_cyto2_finetuned_400_clean_SINGLE_unet_preds_best_morphology.pkl'
     REPORT_FILE    = OUTPUT_ROOT / 'morphology_results.txt'
     CELL_STATS_TXT = INPUT_PKL.parent / 'cell_stats400.txt'
     AREA_SCALE     = 1/4.0
-    MODEL_KEYS     = ('Ground_truth', 'unet_preds')
+    MODEL_KEYS     = ('Ground_truth', 'Unet_preds')
     SAVE_PLOTS     = False   # <-- Set to False to skip all plot generation
 
 
