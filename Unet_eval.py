@@ -21,10 +21,10 @@ import torch.nn as nn
 # USER CONFIGURATION (EDIT HERE)
 # ============================================================================
 
-WORK_DIR   = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ETH/july2025/Train_tes_split_smaller_model_normal"
-TEST_PKL   = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ETH/july2025/Train_tes_split_smaller_model_normal/Test_data_cyto2_finetuned_clean_1500mbar_SINGLE.pkl"
-OUTPUT_PKL = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ETH/july2025/Train_tes_split_smaller_model_normal/Test_data_cyto2_finetuned_clean_1500mbar_SINGLE_unet_preds.pkl"
-STATS_TXT  = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ETH/july2025/Train_tes_split_smaller_model_normal/_inference_stats_1500mbar.txt"  # <-- new
+WORK_DIR   = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ETH/Paper_data/ETH_dataset_CytoTseg/Train_Test_Split"
+INPUT_PKL  = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ETH/Paper_data/ETH_dataset_CytoTseg/Train_Test_Split/Test_data_cyto2_finetuned_400_clean_SINGLE_normalized.pkl"
+OUTPUT_PKL = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ETH/Paper_data/ETH_dataset_CytoTseg/Train_Test_Split/Test_data_cyto2_finetuned_400_clean_SINGLE_unet_preds.pkl"
+STATS_TXT  = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ETH/Paper_data/ETH_dataset_CytoTseg/Train_Test_Split/_inference_stats_400_mbar.txt"
 
 BATCH_SIZE = 32
 PAD_MODE   = "reflect"  # reflect|edge|constant
