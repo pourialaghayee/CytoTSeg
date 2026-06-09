@@ -45,11 +45,11 @@ class Config:
     """Configuration class for all parameters"""
 
     # Paths
-    INPUT_PKL = Path('/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ETH/Paper_data/ETH_dataset_CytoTseg/Train_Test_Split/Test_data_cyto2_finetuned_400_clean_SINGLE_unet_preds_best_morphology.pkl')
+    INPUT_PKL = Path('/home/ubuntu/CytoTSeg-code/Preparing_ETH_data_for_submission/Train_Test_split/Test_data_cyto2_finetuned_400_clean_SINGLE_unet_preds_best_morphology.pkl')
     OUTPUT_ROOT_NAME = 'Classification_results'  # <-- change to 'Classification_results_400_mbar_d2b1' for the other run
 
     # Model selection
-    SELECTED_MODEL = 'unet_preds'  # 'Ground_truth' or 'Unet_preds' or 'Unet_preds_CLL_focus_k1_5' etc.
+    SELECTED_MODEL = 'Unet_preds'  # 'Ground_truth' or 'Unet_preds' or 'Unet_preds_CLL_focus_k1_5' etc.
 
     # Cross-validation parameters
     RANDOM_STATE = 42
