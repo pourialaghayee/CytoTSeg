@@ -10,6 +10,7 @@ Date: March 2026
 import os
 import math
 import pickle
+import argparse
 import numpy as np
 import pandas as pd
 from collections import defaultdict
@@ -27,11 +28,11 @@ from datetime import datetime
 
 
 class Config:
-    INPUT_PKL      = Path('/home/ubuntu/CytoTSeg-code/Preparing_ETH_data_for_submission/Train_Test_split/Test_data_cyto2_finetuned_400_clean_SINGLE_unet_preds.pkl')
-    OUTPUT_ROOT    = INPUT_PKL.parent / 'morphology_analysis_outputs_best400'
-    FINAL_DB_OUT   = INPUT_PKL.parent / 'Test_data_cyto2_finetuned_400_clean_SINGLE_unet_preds_best_morphology.pkl'
+    INPUT_PKL      = Path('test_unet_preds.pkl')
+    OUTPUT_ROOT    = Path('morphology_outputs')
+    FINAL_DB_OUT   = Path('test_morphology.pkl')
     REPORT_FILE    = OUTPUT_ROOT / 'morphology_results.txt'
-    CELL_STATS_TXT = INPUT_PKL.parent / 'cell_stats400.txt'
+    CELL_STATS_TXT = OUTPUT_ROOT / 'cell_stats.tsv'
     AREA_SCALE     = 1/4.0
     MODEL_KEYS     = ('Ground_truth', 'Unet_preds')
     SAVE_PLOTS     = False   # <-- Set to False to skip all plot generation
@@ -60,11 +61,14 @@ def _to_list_of_arrays(x):
     if isinstance(x, (list, tuple)):
         return [np.asarray(im) for im in x]
     arr = np.asarray(x)
-    if arr.ndim == 2 or arr.ndim == 3:
+    if arr.ndim == 2:
         return [arr]
-    if arr.ndim == 4:
+    if arr.ndim == 3:
+        # A color image is one item; an N x H x W grayscale array is a batch.
+        if arr.shape[-1] in (1, 3, 4):
+            return [arr]
         return [arr[i] for i in range(arr.shape[0])]
-    if arr.ndim == 3 and arr.shape[0] > 1 and (arr.shape[-1] != 3 and arr.shape[-1] != 1):
+    if arr.ndim == 4:
         return [arr[i] for i in range(arr.shape[0])]
     raise ValueError(f"Unsupported array shape for coercion: {arr.shape}")
 
@@ -193,8 +197,9 @@ def separate_mask_into_objects(mask_array):
         return objects
 
 
-    if len(uniq) == 1 and uniq[0] == 1:
-        binmask = (mask == 1).astype(np.uint8) * 255
+    if len(uniq) == 1:
+        # Binary masks may use 1 or 255. Split disconnected foreground regions.
+        binmask = (mask == uniq[0]).astype(np.uint8) * 255
         contours, _ = cv2.findContours(binmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         for i, c in enumerate(contours, start=1):
             obj_mask = np.zeros_like(mask, dtype=np.int32)
@@ -237,9 +242,9 @@ def postprocess_for_new_data(db_in,
             log_message(f"\n{'='*70}\nProcessing patient: {pid}\n{'='*70}", report_handle)
 
 
-        images = _to_list_of_arrays(pdata.get('images'))
+        images = _to_list_of_arrays(pdata.get('image', pdata.get('images')))
         if not images:
-            log_message(f"[{pid}] No 'image' found — skipping.", report_handle)
+            log_message(f"[{pid}] No 'image' or 'images' found — skipping.", report_handle)
             continue
 
 
@@ -283,7 +288,7 @@ def postprocess_for_new_data(db_in,
 
 
                     morph_row = {
-                        'Mask_ID':        f"{pid}_{model_key}_obj{obj_label}",
+                        'Mask_ID':        f"{pid}_{model_key}_img{img_idx}_obj{obj_label}",
                         'Patient_ID':     pid,
                         'Group':          'CLL' if pid.startswith('CLL') else 'Control',
                         'SourceModel':    model_key,
@@ -533,8 +538,46 @@ def generate_all_plots(db, model_keys, output_dir, report_handle=None):
 # ============================================================================
 
 
-def main():
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description="Extract contour-based morphology features from segmentation masks."
+    )
+    parser.add_argument("--input", type=Path, required=True, help="Prediction pickle.")
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--final-db", type=Path, help="Output pickle containing morphology DataFrames.")
+    parser.add_argument("--cell-stats", type=Path, help="Per-patient coverage TSV.")
+    parser.add_argument("--area-scale", type=float, default=0.25)
+    parser.add_argument("--model-keys", nargs="+", default=["Ground_truth", "Unet_preds"])
+    parser.add_argument("--save-plots", action="store_true")
+    return parser
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    Config.INPUT_PKL = args.input.expanduser().resolve()
+    Config.OUTPUT_ROOT = args.output_dir.expanduser().resolve()
+    Config.FINAL_DB_OUT = (
+        args.final_db.expanduser().resolve()
+        if args.final_db
+        else Config.OUTPUT_ROOT / "test_morphology.pkl"
+    )
+    Config.REPORT_FILE = Config.OUTPUT_ROOT / "morphology_results.txt"
+    Config.CELL_STATS_TXT = (
+        args.cell_stats.expanduser().resolve()
+        if args.cell_stats
+        else Config.OUTPUT_ROOT / "cell_stats.tsv"
+    )
+    Config.AREA_SCALE = args.area_scale
+    Config.MODEL_KEYS = tuple(args.model_keys)
+    Config.SAVE_PLOTS = args.save_plots
+    if not Config.INPUT_PKL.is_file():
+        raise FileNotFoundError(f"Input pickle not found: {Config.INPUT_PKL}")
+    if Config.AREA_SCALE <= 0:
+        raise ValueError("--area-scale must be positive.")
+
     Config.OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+    Config.FINAL_DB_OUT.parent.mkdir(parents=True, exist_ok=True)
+    Config.CELL_STATS_TXT.parent.mkdir(parents=True, exist_ok=True)
 
 
     with open(Config.REPORT_FILE, 'w') as report_file:
@@ -550,7 +593,7 @@ def main():
         log_message(f"Input file:       {Config.INPUT_PKL}", report_file)
         log_message(f"Output directory: {Config.OUTPUT_ROOT}", report_file)
         log_message(f"Final database:   {Config.FINAL_DB_OUT}", report_file)
-        log_message(f"Area scale:       {Config.AREA_SCALE} (1 pixel = 0.5 μm, 1 pixel² = 0.25 μm²)", report_file)
+        log_message(f"Area scale:       {Config.AREA_SCALE} physical units² per pixel²", report_file)
         log_message(f"Model keys:       {Config.MODEL_KEYS}", report_file)
         log_message(f"Save plots:       {Config.SAVE_PLOTS}", report_file)
         log_message("", report_file)

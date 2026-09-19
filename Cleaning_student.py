@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Cleans instance masks in db[pid]['Unet_preds']
-Overwrites the same key in-place and saves back to the same pkl file.
+Cleans masks in db[pid]['Unet_preds'] and writes a separate output by default.
 
 For guck2022 / guck2025: additionally removes objects whose bounding box
 centroid or extent overlaps the dark border zones (rows < TOP_DEAD_ROWS
 or rows > BOTTOM_DEAD_ROW).
 """
 
-import time, pickle, math
+import time, pickle, math, argparse
+from pathlib import Path
 import numpy as np
 import cv2
 
@@ -39,12 +39,6 @@ DEAD_ZONE_CONFIG = {
 }
 
 
-# ============== CONFIG ==============
-DATA_PKL  = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/Guck2025/Train_Test_Split/Test_data_cyto2_finetuned_clean_SINGLE_unet_preds_morphology.pkl"
-INPUT_KEY = "Unet_preds"
-
-DATASET = "guck2025"       # ← adjust if needed
-
 EDGE_BUFFER     = 2
 MAX_AREA_FRAC   = 0.25
 DROP_WIDE_BANDS = True
@@ -52,7 +46,6 @@ MIN_WIDTH_FRAC  = 0.70
 MIN_BAND_ASPECT = 6.0
 
 PROGRESS_EVERY = 100
-# ====================================
 
 
 def _touches_edges(x, y, w, h, H, W):
@@ -136,6 +129,11 @@ def _keep_object(bm_u8, params, H, W, dead_zone=None):
 
 def clean_instance_map(inst_map, params, dead_zone=None):
     inst      = inst_map.astype(np.int32)
+    foreground_labels = np.unique(inst[inst > 0])
+    if len(foreground_labels) == 1:
+        # U-Net output is binary (usually 0/255); label disconnected objects first.
+        _, inst = cv2.connectedComponents((inst > 0).astype(np.uint8))
+        inst = inst.astype(np.int32)
     H, W      = inst.shape
     out       = np.zeros((H, W), dtype=np.int32)
     new_label = 1
@@ -151,16 +149,39 @@ def clean_instance_map(inst_map, params, dead_zone=None):
     return out
 
 
-def main():
-    t_start = time.perf_counter()
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description="Clean student prediction masks without overwriting the source by default."
+    )
+    parser.add_argument("--input", type=Path, required=True, help="Input prediction pickle.")
+    parser.add_argument("--output", type=Path, help="Output pickle. Defaults to <input>_cleaned.pkl.")
+    parser.add_argument("--in-place", action="store_true", help="Overwrite the input pickle.")
+    parser.add_argument("--dataset", choices=sorted(DATASET_CONFIG), required=True)
+    parser.add_argument("--input-key", default="Unet_preds")
+    parser.add_argument("--progress-every", type=int, default=100)
+    return parser
 
-    assert DATASET in DATASET_CONFIG, f"Unknown dataset '{DATASET}'"
-    params    = DATASET_CONFIG[DATASET]
-    dead_zone = DEAD_ZONE_CONFIG.get(DATASET, None)   # None for datasets without dead zones
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    t_start = time.perf_counter()
+    input_path = args.input.expanduser().resolve()
+    if not input_path.is_file():
+        raise FileNotFoundError(f"Input pickle not found: {input_path}")
+    if args.in_place and args.output is not None:
+        raise ValueError("Use either --in-place or --output, not both.")
+    output_path = (
+        input_path if args.in_place
+        else (args.output.expanduser().resolve() if args.output
+              else input_path.with_name(f"{input_path.stem}_cleaned{input_path.suffix}"))
+    )
+
+    params    = DATASET_CONFIG[args.dataset]
+    dead_zone = DEAD_ZONE_CONFIG.get(args.dataset, None)   # None for datasets without dead zones
 
     print("=" * 70)
-    print(f"INSTANCE MAP CLEANER — overwriting '{INPUT_KEY}' in-place")
-    print(f"Dataset    : {DATASET}")
+    print(f"INSTANCE MAP CLEANER — key '{args.input_key}'")
+    print(f"Dataset    : {args.dataset}")
     print(f"min_area   : {params['min_area_px']}")
     print(f"min_circ   : {params['min_circ']}")
     print(f"max_ar     : {params['max_ar']}")
@@ -172,12 +193,12 @@ def main():
         print(f"dead_zone  : disabled")
     print("=" * 70)
 
-    with open(DATA_PKL, 'rb') as f:
+    with open(input_path, 'rb') as f:
         db = pickle.load(f)
     print(f"Loaded {len(db)} patients\n")
 
     for pid, pdata in db.items():
-        masks_in = pdata.get(INPUT_KEY, [])
+        masks_in = pdata.get(args.input_key, [])
         n        = len(masks_in)
 
         if n == 0:
@@ -198,18 +219,19 @@ def main():
             total_in  += n_in
             total_out += n_out
 
-            if i % PROGRESS_EVERY == 0 or i == n:
+            if i % args.progress_every == 0 or i == n:
                 print(f"    [{i}/{n}]  {time.perf_counter()-t0:.1f}s elapsed")
 
-        db[pid][INPUT_KEY] = masks_out
+        db[pid][args.input_key] = masks_out
         pct = 100 * total_out / max(total_in, 1)
         print(f"  Done in {time.perf_counter()-t0:.2f}s  "
               f"cells: {total_in} → {total_out} ({pct:.1f}% kept)\n")
 
-    print("Saving back to same file ...")
-    with open(DATA_PKL, 'wb') as f:
+    print(f"Saving: {output_path}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, 'wb') as f:
         pickle.dump(db, f, protocol=pickle.HIGHEST_PROTOCOL)
-    print(f"Saved → {DATA_PKL}")
+    print(f"Saved → {output_path}")
     print(f"Total time: {time.perf_counter()-t_start:.2f}s")
 
 

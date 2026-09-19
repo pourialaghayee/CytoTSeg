@@ -1,0 +1,70 @@
+{
+  "data": {
+    "raw_data_root": "/absolute/path/to/ETH_dataset_CytoTseg",
+    "dataset": "eth400",
+    "frequency": 400,
+    "image_key": "normalized_images"
+  },
+  "run": {
+    "work_dir": "../runs/eth_cll_400",
+    "device": "auto"
+  },
+  "normalization": {
+    "percentile_low": 1.0,
+    "percentile_high": 99.0,
+    "tile_size": 0,
+    "output_dtype": "float32",
+    "workers": 8,
+    "clahe": false
+  },
+  "teacher": {
+    "model": "cyto2",
+    "output_key": "cyto2_finetuned",
+    "clean_key": "cyto2_finetuned_clean",
+    "diameter": 13.5,
+    "chunk_size": 256,
+    "flow_threshold": 0.4,
+    "cellprob_threshold": 0.0,
+    "disable_internal_normalization": false
+  },
+  "split": {
+    "single_patient_train": true,
+    "test_ratio": 0.95,
+    "random_seed": 42
+  },
+  "training": {
+    "seed": 333,
+    "validation_fraction": 0.15,
+    "n_trials": 200,
+    "epochs": 100,
+    "early_stop_patience": 15,
+    "dice_threshold": 0.95,
+    "disable_amp": false
+  },
+  "evaluation": {
+    "batch_size": 32,
+    "pad_mode": "reflect",
+    "clean_predictions": false
+  },
+  "morphology": {
+    "area_scale": 0.25,
+    "model_keys": [
+      "Ground_truth",
+      "Unet_preds"
+    ],
+    "save_plots": false
+  },
+  "classification": {
+    "enabled": true,
+    "selected_model": "Unet_preds",
+    "random_state": 42,
+    "outer_folds": 3,
+    "inner_folds": 2,
+    "k_values": [
+      5,
+      10,
+      20,
+      "all"
+    ]
+  }
+}

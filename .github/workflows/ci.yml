@@ -1,0 +1,18 @@
+name: Basic checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  syntax-and-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile Python sources
+        run: python -m compileall -q .
+      - name: Validate example pipeline
+        run: python main.py all --config configs/eth_cll.example.json --dry-run

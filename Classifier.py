@@ -17,6 +17,7 @@ import sys
 import time
 import warnings
 import pickle
+import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -45,7 +46,8 @@ class Config:
     """Configuration class for all parameters"""
 
     # Paths
-    INPUT_PKL = Path('/home/ubuntu/CytoTSeg-code/Preparing_ETH_data_for_submission/Train_Test_split/Test_data_cyto2_finetuned_400_clean_SINGLE_unet_preds_best_morphology.pkl')
+    INPUT_PKL = Path('test_morphology.pkl')
+    OUTPUT_DIR = None
     OUTPUT_ROOT_NAME = 'Classification_results'  # <-- change to 'Classification_results_400_mbar_d2b1' for the other run
 
     # Model selection
@@ -79,8 +81,11 @@ class Config:
     @classmethod
     def setup_output_directory(cls):
         """Create timestamped output directory"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_dir = cls.INPUT_PKL.parent / f'{cls.OUTPUT_ROOT_NAME}_{timestamp}'
+        if cls.OUTPUT_DIR is not None:
+            output_dir = Path(cls.OUTPUT_DIR)
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_dir = cls.INPUT_PKL.parent / f'{cls.OUTPUT_ROOT_NAME}_{timestamp}'
         output_dir.mkdir(parents=True, exist_ok=True)
         return output_dir
 
@@ -893,8 +898,48 @@ class ReportGenerator:
 # MAIN EXECUTION
 # ============================================================================
 
-def main():
+def parse_k_values(values):
+    parsed = []
+    for value in values:
+        if value.lower() in {"all", "max"}:
+            parsed.append("max")
+        else:
+            number = int(value)
+            if number < 1:
+                raise ValueError("Feature counts must be positive integers.")
+            parsed.append(number)
+    return parsed
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description="Run nested cross-validation on patient-level morphology features."
+    )
+    parser.add_argument("--input", type=Path, required=True, help="Morphology-enriched pickle.")
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--selected-model", default="Unet_preds")
+    parser.add_argument("--random-state", type=int, default=42)
+    parser.add_argument("--outer-folds", type=int, default=3)
+    parser.add_argument("--inner-folds", type=int, default=2)
+    parser.add_argument("--k-values", nargs="+", default=["5", "10", "20", "all"])
+    return parser
+
+
+def main(argv=None):
     """Main execution function"""
+
+    args = build_parser().parse_args(argv)
+    Config.INPUT_PKL = args.input.expanduser().resolve()
+    Config.OUTPUT_DIR = args.output_dir.expanduser().resolve()
+    Config.SELECTED_MODEL = args.selected_model
+    Config.RANDOM_STATE = args.random_state
+    Config.N_OUTER_FOLDS = args.outer_folds
+    Config.N_INNER_FOLDS = args.inner_folds
+    Config.K_VALUES = parse_k_values(args.k_values)
+    if not Config.INPUT_PKL.is_file():
+        raise FileNotFoundError(f"Input pickle not found: {Config.INPUT_PKL}")
+    if Config.N_OUTER_FOLDS < 2 or Config.N_INNER_FOLDS < 2:
+        raise ValueError("Both outer and inner folds must be at least 2.")
 
     print("="*80)
     print("NESTED CROSS-VALIDATION FOR CLL CLASSIFICATION")

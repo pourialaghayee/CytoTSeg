@@ -16,6 +16,7 @@ import math
 import json
 import time
 import csv
+import argparse
 from pathlib import Path
 from datetime import datetime
 
@@ -38,8 +39,8 @@ from optuna.visualization.matplotlib import (
 # CONFIGURATION
 # ============================================================================
 
-PKL_PATH = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ETH/Paper_data/ETH_dataset_CytoTseg/Train_Test_Split/Train_data_cyto2_finetuned_400_clean_SINGLE.pkl"
-WORK_DIR = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ETH/Paper_data/ETH_dataset_CytoTseg/Train_Test_Split"
+PKL_PATH = ""
+WORK_DIR = ""
 
 DEVICE   = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 SEED     = 333
@@ -70,33 +71,60 @@ OPTUNA_CONFIG = {
     'dice_threshold_pct': 0.95,
 }
 
-# ============================================================================
-# SETUP
-# ============================================================================
-
-for sub in ["", "checkpoints", "plots", "logs", "optuna_plots"]:
-    Path(os.path.join(WORK_DIR, sub)).mkdir(parents=True, exist_ok=True)
-
-random.seed(SEED)
-np.random.seed(SEED)
-torch.manual_seed(SEED)
-if torch.cuda.is_available():
-    torch.cuda.manual_seed_all(SEED)
-
-log_file = os.path.join(WORK_DIR, "logs",
-                        f"optuna_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
+log_file = None
 
 def log_print(msg, also_print=True):
+    if log_file is None:
+        raise RuntimeError("Training runtime is not configured. Call configure_runtime() first.")
     with open(log_file, 'a') as f:
         f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {msg}\n")
     if also_print:
         print(msg)
 
-log_print("=" * 80)
-log_print("U-NET OPTUNA MULTI-OBJECTIVE SEARCH PIPELINE")
-log_print("=" * 80)
-log_print(f"Device: {DEVICE}")
-log_print(f"Working directory: {WORK_DIR}")
+def configure_runtime(args):
+    global PKL_PATH, WORK_DIR, DEVICE, USE_AMP, SEED, VAL_FRAC, log_file
+
+    PKL_PATH = str(args.input.expanduser().resolve())
+    WORK_DIR = str(args.work_dir.expanduser().resolve())
+    if not Path(PKL_PATH).is_file():
+        raise FileNotFoundError(f"Training pickle not found: {PKL_PATH}")
+
+    if args.device == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA was requested but PyTorch cannot access a CUDA device.")
+    if args.device == "cpu":
+        DEVICE = torch.device("cpu")
+    elif args.device == "cuda":
+        DEVICE = torch.device("cuda")
+    else:
+        DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    SEED = args.seed
+    VAL_FRAC = args.validation_fraction
+    USE_AMP = DEVICE.type == "cuda" and not args.no_amp
+    OPTUNA_CONFIG["n_trials_total"] = args.n_trials
+    OPTUNA_CONFIG["epochs"] = args.epochs
+    OPTUNA_CONFIG["early_stop_patience"] = args.early_stop_patience
+    OPTUNA_CONFIG["dice_threshold_pct"] = args.dice_threshold
+
+    for sub in ["", "checkpoints", "plots", "logs", "optuna_plots"]:
+        Path(WORK_DIR, sub).mkdir(parents=True, exist_ok=True)
+
+    random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(SEED)
+
+    log_file = os.path.join(
+        WORK_DIR,
+        "logs",
+        f"optuna_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+    )
+    log_print("=" * 80)
+    log_print("U-NET OPTUNA MULTI-OBJECTIVE SEARCH PIPELINE")
+    log_print("=" * 80)
+    log_print(f"Device: {DEVICE}")
+    log_print(f"Working directory: {WORK_DIR}")
 
 # ============================================================================
 # LEARNING RATE SCHEDULER
@@ -534,8 +562,12 @@ def run_final_training(chosen_trial: optuna.trial.FrozenTrial, base_pos_weight: 
     train_ds = CellDataset(PKL_PATH, augmentation=augment,   verbose=True)
     val_ds   = CellDataset(PKL_PATH, augmentation='minimal', verbose=False)
     N        = len(train_ds)
+    if N < 2:
+        raise ValueError("At least two training samples are required.")
     idxs     = list(range(N)); random.shuffle(idxs)
-    split    = int(0.85 * N)
+    n_val    = max(1, int(round(N * VAL_FRAC)))
+    n_val    = min(n_val, N - 1)
+    split    = N - n_val
     train_idx, val_idx = idxs[:split], idxs[split:]
     log_print(f"Data: {len(train_idx)} train / {len(val_idx)} val")
 
@@ -554,15 +586,17 @@ def run_final_training(chosen_trial: optuna.trial.FrozenTrial, base_pos_weight: 
 
     optimizer  = torch.optim.Adam(model.parameters(),
                                   lr=lr_start, weight_decay=weight_decay)
-    scheduler  = CosineAnnealingSchedule(optimizer, 100, lr_start, OPTUNA_CONFIG['lr_floor'])
+    max_epochs = OPTUNA_CONFIG['epochs']
+    patience   = OPTUNA_CONFIG['early_stop_patience']
+    scheduler  = CosineAnnealingSchedule(optimizer, max_epochs, lr_start, OPTUNA_CONFIG['lr_floor'])
     scaler     = amp.GradScaler(enabled=USE_AMP)
-    early_stop = EarlyStopping(patience=15)
+    early_stop = EarlyStopping(patience=patience)
 
     best_dice, best_epoch = -1.0, 0
     history   = []
     ckpt_path = os.path.join(WORK_DIR, 'checkpoints', 'best_model.pth')
 
-    for epoch in range(1, 101):
+    for epoch in range(1, max_epochs + 1):
         lr         = scheduler.step(epoch - 1)
         train_loss = train_one_epoch(model, train_loader, optimizer, scaler, pos_weight)
         val_loss, val_dice, val_iou = validate(model, val_loader, pos_weight)
@@ -624,14 +658,14 @@ def run_final_training(chosen_trial: optuna.trial.FrozenTrial, base_pos_weight: 
         'training': {
             'lr_start': float(lr_start), 'lr_min': float(OPTUNA_CONFIG['lr_floor']),
             'scheduler': 'CosineAnnealing', 'batch_size': int(batch_size),
-            'max_epochs': 100, 'early_stop_patience': 15,
+            'max_epochs': int(max_epochs), 'early_stop_patience': int(patience),
             'best_epoch': int(best_epoch), 'epochs_trained': len(history),
             'loss_function': 'weighted_bce_dice', 'pos_weight': float(pos_weight),
             'weight_decay': float(weight_decay),
         },
         'preprocessing': {'norm_mode': 'pre_normalized', 'pad_multiple': 4},
         'threshold': float(best_thr),
-        'validation': {'dice': float(best_dice), 'val_fraction': 0.15},
+        'validation': {'dice': float(best_dice), 'val_fraction': float(VAL_FRAC)},
         'augmentation': {'type': augment},
         'efficiency': {'inference_ms_per_image': float(inf_time)},
         'selection': {
@@ -936,8 +970,34 @@ def create_final_summary(study: optuna.Study,
 # MAIN
 # ============================================================================
 
-def main():
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description="Search for a compact U-Net and train the selected student model."
+    )
+    parser.add_argument("--input", type=Path, required=True, help="Flat training pickle.")
+    parser.add_argument("--work-dir", type=Path, required=True, help="Training output directory.")
+    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
+    parser.add_argument("--seed", type=int, default=333)
+    parser.add_argument("--validation-fraction", type=float, default=0.15)
+    parser.add_argument("--n-trials", type=int, default=200)
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--early-stop-patience", type=int, default=15)
+    parser.add_argument("--dice-threshold", type=float, default=0.95)
+    parser.add_argument("--no-amp", action="store_true", help="Disable mixed precision.")
+    return parser
+
+
+def main(argv=None):
     global _TRAIN_IDX, _VAL_IDX, _BASE_POS_W
+
+    args = build_parser().parse_args(argv)
+    if not 0.0 < args.validation_fraction < 1.0:
+        raise ValueError("--validation-fraction must be between 0 and 1.")
+    if args.n_trials < 1 or args.epochs < 1 or args.early_stop_patience < 1:
+        raise ValueError("Trials, epochs, and early-stop patience must be positive.")
+    if not 0.0 < args.dice_threshold <= 1.0:
+        raise ValueError("--dice-threshold must be in (0, 1].")
+    configure_runtime(args)
 
     start_time = time.time()
 

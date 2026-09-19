@@ -9,27 +9,12 @@ Image Pre-normalization Script
 import os
 import time
 import pickle
+import argparse
 import numpy as np
 import cv2
+from pathlib import Path
 from typing import Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
-
-INPUT_PATH      = "/home/ubuntu/CytoTSeg-code/Preparing_ETH_data_for_submission/"
-INPUT_PKL       = "_Data_bank_400_mbar.pkl"
-OUTPUT_PKL      = "_Data_bank_400_mbar_normalized.pkl"
-
-APPLY_CLAHE     = False    # No CLAHE — global percentile is enough for flow cytometry
-PERCENTILE_LOW  = 1.0      # Cellpose default
-PERCENTILE_HIGH = 99.0     # Cellpose default
-TILE_SIZE       = 0        # 0 = global normalization (no tiling, no boundary artifacts)
-OUTPUT_DTYPE    = 'float32'
-NUM_WORKERS     = 16
-PROGRESS_EVERY  = 5
 
 
 # ============================================================================
@@ -207,15 +192,35 @@ def prenormalize_database(db: Dict[str, Any],
     return db
 
 
-# ============================================================================
-# MAIN
-# ============================================================================
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description="Normalize every image in a CytoTSeg patient pickle."
+    )
+    parser.add_argument("--input", type=Path, required=True, help="Input patient pickle.")
+    parser.add_argument("--output", type=Path, required=True, help="Output normalized pickle.")
+    parser.add_argument("--clahe", action="store_true", help="Apply CLAHE before normalization.")
+    parser.add_argument("--percentile-low", type=float, default=1.0)
+    parser.add_argument("--percentile-high", type=float, default=99.0)
+    parser.add_argument("--tile-size", type=int, default=0, help="0 uses global normalization.")
+    parser.add_argument("--output-dtype", choices=("float32", "uint8"), default="float32")
+    parser.add_argument("--workers", type=int, default=max(1, min(16, os.cpu_count() or 1)))
+    parser.add_argument("--progress-every", type=int, default=5)
+    return parser
 
-if __name__ == "__main__":
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    input_path = args.input.expanduser().resolve()
+    output_path = args.output.expanduser().resolve()
+
+    if not input_path.is_file():
+        raise FileNotFoundError(f"Input pickle not found: {input_path}")
+    if not 0 <= args.percentile_low < args.percentile_high <= 100:
+        raise ValueError("Percentiles must satisfy 0 <= low < high <= 100.")
+    if args.workers < 1:
+        raise ValueError("--workers must be at least 1.")
+
     start = time.perf_counter()
-
-    input_path = os.path.join(INPUT_PATH, INPUT_PKL)
-    output_path = os.path.join(INPUT_PATH, OUTPUT_PKL)
 
     print(f"Loading: {input_path}")
     t0 = time.perf_counter()
@@ -225,20 +230,25 @@ if __name__ == "__main__":
 
     db = prenormalize_database(
         db,
-        apply_clahe     = APPLY_CLAHE,
-        percentile_low  = PERCENTILE_LOW,
-        percentile_high = PERCENTILE_HIGH,
-        tile_size       = TILE_SIZE,
-        output_dtype    = OUTPUT_DTYPE,
-        num_workers     = NUM_WORKERS,
-        progress_every  = PROGRESS_EVERY,
+        apply_clahe     = args.clahe,
+        percentile_low  = args.percentile_low,
+        percentile_high = args.percentile_high,
+        tile_size       = args.tile_size,
+        output_dtype    = args.output_dtype,
+        num_workers     = args.workers,
+        progress_every  = args.progress_every,
     )
 
     print(f"\nSaving: {output_path}")
     t1 = time.perf_counter()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "wb") as f:
         pickle.dump(db, f, protocol=pickle.HIGHEST_PROTOCOL)
     print(f"Saved in {time.perf_counter()-t1:.2f}s")
 
     print(f"\nTotal elapsed: {time.perf_counter()-start:.2f}s")
     print(f"Output: {output_path}")
+
+
+if __name__ == "__main__":
+    main()

@@ -7,7 +7,8 @@ Saves  db[pid][OUTPUT_KEY] (list of int32 instance masks, relabeled 1..M)
 Output stays as instance map — NOT converted to binary
 """
 
-import time, pickle, math
+import time, pickle, math, argparse
+from pathlib import Path
 import numpy as np
 import cv2
 
@@ -21,14 +22,6 @@ DATASET_CONFIG = {
     "guck2025": dict(diameter=22.2,  min_area_px=150,  min_circ=0.25, max_ar=12.0, max_def=0.6, edge_filter=False),
     "icellcnn": dict(diameter=73.0,  min_area_px=2500, min_circ=0.85, max_ar=4.0,  max_def=0.40, edge_filter=False),
 }
-# ============== CONFIG ==============
-DATA_PKL   = "/home/ubuntu/CytoTSeg-code/Preparing_ETH_data_for_submission/_Data_bank_400_mbar_normalized.pkl"
-OUT_PKL    = "/home/ubuntu/CytoTSeg-code/Preparing_ETH_data_for_submission/_Data_bank_400_mbar_normalized_cleaned.pkl"
-INPUT_KEY  = "cyto2_finetuned"
-OUTPUT_KEY = "cyto2_finetuned_clean"
-
-DATASET    = "eth400"   # ← change this to switch dataset
-
 # Border filters (only active when edge_filter=True in DATASET_CONFIG)
 EDGE_BUFFER     = 2
 MAX_AREA_FRAC   = 0.25   # drop if area >= 25% of image AND touches >= 2 borders
@@ -37,7 +30,6 @@ MIN_WIDTH_FRAC  = 0.70   # drop if width >= 70% of image width...
 MIN_BAND_ASPECT = 6.0    # ...and aspect ratio >= 6
 
 PROGRESS_EVERY = 100
-# ====================================
 
 
 def _touches_edges(x, y, w, h, H, W):
@@ -130,15 +122,32 @@ def clean_instance_map(inst_map, params):
     return out
 
 
-def main():
-    t_start = time.perf_counter()
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description="Filter implausible teacher-mask objects using dataset-specific morphology rules."
+    )
+    parser.add_argument("--input", type=Path, required=True, help="Input patient pickle.")
+    parser.add_argument("--output", type=Path, required=True, help="Output cleaned pickle.")
+    parser.add_argument("--dataset", choices=sorted(DATASET_CONFIG), required=True)
+    parser.add_argument("--input-key", default="cyto2_finetuned")
+    parser.add_argument("--output-key", default="cyto2_finetuned_clean")
+    parser.add_argument("--progress-every", type=int, default=100)
+    return parser
 
-    assert DATASET in DATASET_CONFIG, f"Unknown dataset '{DATASET}' — add it to DATASET_CONFIG"
-    params = DATASET_CONFIG[DATASET]
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    t_start = time.perf_counter()
+    input_path = args.input.expanduser().resolve()
+    output_path = args.output.expanduser().resolve()
+
+    if not input_path.is_file():
+        raise FileNotFoundError(f"Input pickle not found: {input_path}")
+    params = DATASET_CONFIG[args.dataset]
 
     print("=" * 70)
-    print(f"INSTANCE MAP CLEANER — {INPUT_KEY} → {OUTPUT_KEY}")
-    print(f"Dataset    : {DATASET}")
+    print(f"INSTANCE MAP CLEANER — {args.input_key} → {args.output_key}")
+    print(f"Dataset    : {args.dataset}")
     print(f"min_area   : {params['min_area_px']}")
     print(f"min_circ   : {params['min_circ']}")
     print(f"max_ar     : {params['max_ar']}")
@@ -146,16 +155,16 @@ def main():
     print(f"edge_filter: {params['edge_filter']}")
     print("=" * 70)
 
-    with open(DATA_PKL, 'rb') as f:
+    with open(input_path, 'rb') as f:
         db = pickle.load(f)
     print(f"Loaded {len(db)} patients\n")
 
     for pid, pdata in db.items():
-        masks_in = pdata.get(INPUT_KEY, [])
+        masks_in = pdata.get(args.input_key, [])
         n        = len(masks_in)
 
         if n == 0:
-            db[pid][OUTPUT_KEY] = []
+            db[pid][args.output_key] = []
             print(f"  [{pid}] no masks — skipping")
             continue
 
@@ -173,18 +182,19 @@ def main():
             total_in  += n_in
             total_out += n_out
 
-            if i % PROGRESS_EVERY == 0 or i == n:
+            if i % args.progress_every == 0 or i == n:
                 print(f"    [{i}/{n}]  {time.perf_counter()-t0:.1f}s elapsed")
 
-        db[pid][OUTPUT_KEY] = masks_out
+        db[pid][args.output_key] = masks_out
         pct = 100 * total_out / max(total_in, 1)
         print(f"  Done in {time.perf_counter()-t0:.2f}s  "
               f"cells: {total_in} → {total_out} ({pct:.1f}% kept)\n")
 
     print("Saving ...")
-    with open(OUT_PKL, 'wb') as f:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, 'wb') as f:
         pickle.dump(db, f, protocol=pickle.HIGHEST_PROTOCOL)
-    print(f"Saved → {OUT_PKL}")
+    print(f"Saved → {output_path}")
     print(f"Total time: {time.perf_counter()-t_start:.2f}s")
 
 

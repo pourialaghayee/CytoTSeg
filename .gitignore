@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# CytoTSeg datasets and generated outputs
+runs/
+*.pkl
+*.pth
+*.pt
+*.db
+checkpoints/

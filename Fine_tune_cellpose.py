@@ -1,91 +1,126 @@
-import os, random, pickle
+#!/usr/bin/env python3
+"""Fine-tune a Cellpose Cyto2 teacher from a trusted annotated pickle."""
+
+import argparse
+import pickle
+import random
+from pathlib import Path
+
 import numpy as np
 from skimage.measure import label
 from skimage.util import img_as_float32
 from cellpose import models
 from cellpose import train as cp_train
 
-# ─── 1. CONFIG ────────────────────────────────────────────
-PATH_PKL   = '/mnt/lustre/home/claassen/clala950/DC-TSeg/Fine_tuned_cellpose/annotated_data_5_datasets.pkl'
-SAVE_DIR   = '/mnt/lustre/home/claassen/clala950/DC-TSeg/Fine_tuned_cellpose/Cellpose_Fine_Tune_Models'
-os.makedirs(SAVE_DIR, exist_ok=True)
 
-PRETRAINED_MODEL = 'cyto2'
+def build_parser():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--input", type=Path, required=True, help="Annotated multi-dataset pickle.")
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--pretrained-model", default="cyto2")
+    parser.add_argument(
+        "--datasets",
+        nargs="+",
+        help="Dataset keys to use. Omit to use every dataset in the pickle.",
+    )
+    parser.add_argument("--model-name", help="Output model name; generated automatically when omitted.")
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--learning-rate", type=float, default=1e-5)
+    parser.add_argument("--validation-fraction", type=float, default=0.1)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--cpu", action="store_true", help="Disable GPU training.")
+    return parser
 
-# ── SELECT DATASETS HERE ──────────────────────────────────
-# use a subset:   DATASETS = ['eth400', 'eth1500']
-# use one:        DATASETS = ['guck2025']
-# use all:        DATASETS = None   ← will use every key in the pkl
-DATASETS = None
-# ─────────────────────────────────────────────────────────
 
-# model name is built automatically from selected datasets
-# ─── 2. LOAD DATA ─────────────────────────────────────────
-db = pickle.load(open(PATH_PKL, 'rb'))
+def collect_samples(db, datasets):
+    images, masks = [], []
+    for dataset in datasets:
+        image_dict = db[dataset]["image"]
+        gt_dict = db[dataset]["GT"]
+        common_keys = sorted(set(image_dict) & set(gt_dict))
+        print(f"\n[{dataset}] Paired samples: {len(common_keys)}")
 
-if DATASETS is None:
-    DATASETS = sorted(db.keys())
-    print(f"Using ALL datasets: {DATASETS}")
-else:
-    missing = [d for d in DATASETS if d not in db]
+        kept = 0
+        for key in common_keys:
+            image = img_as_float32(np.squeeze(image_dict[key]))
+            mask = label(np.squeeze(gt_dict[key]) > 0).astype(np.int32)
+            if mask.max() == 0:
+                continue
+            images.append(image)
+            masks.append(mask)
+            kept += 1
+        print(f"[{dataset}] After dropping empty masks: {kept}")
+    return images, masks
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    input_path = args.input.expanduser().resolve()
+    output_dir = args.output_dir.expanduser().resolve()
+
+    if not input_path.is_file():
+        raise FileNotFoundError(f"Input pickle not found: {input_path}")
+    if not 0.0 < args.validation_fraction < 1.0:
+        raise ValueError("--validation-fraction must be between 0 and 1.")
+
+    with open(input_path, "rb") as handle:
+        db = pickle.load(handle)
+
+    datasets = sorted(db) if args.datasets is None else args.datasets
+    missing = [name for name in datasets if name not in db]
     if missing:
-        raise KeyError(f"Datasets not found in pkl: {missing}. Available: {list(db.keys())}")
-    print(f"Using datasets: {DATASETS}")
+        raise KeyError(f"Datasets not found: {missing}. Available: {sorted(db)}")
+    print(f"Using datasets: {datasets}")
 
-MODEL_NAME = f"{'_'.join(DATASETS)}_{PRETRAINED_MODEL}_finetuned"
-print(f"Model name: {MODEL_NAME}")
+    images, masks = collect_samples(db, datasets)
+    if len(images) < 2:
+        raise ValueError("At least two non-empty annotated samples are required.")
 
-# ─── 3. COLLECT IMAGES & MASKS FROM ALL SELECTED DATASETS ─
-imgs, masks = [], []
+    indices = list(range(len(images)))
+    random.Random(args.seed).shuffle(indices)
+    n_val = max(1, int(round(args.validation_fraction * len(indices))))
+    n_val = min(n_val, len(indices) - 1)
 
-for dataset in DATASETS:
-    image_dict = db[dataset]['image']
-    gt_dict    = db[dataset]['GT']
+    x_train = [images[i][np.newaxis] for i in indices[n_val:]]
+    y_train = [masks[i] for i in indices[n_val:]]
+    x_val = [images[i][np.newaxis] for i in indices[:n_val]]
+    y_val = [masks[i] for i in indices[:n_val]]
 
-    common_keys = sorted(set(image_dict.keys()) & set(gt_dict.keys()))
-    print(f"\n[{dataset}] Paired samples: {len(common_keys)}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    model_name = args.model_name or f"{'_'.join(datasets)}_{args.pretrained_model}_finetuned"
+    print(f"Train: {len(x_train)} | Validation: {len(x_val)}")
+    print(f"Model name: {model_name}")
 
-    count = 0
-    for k in common_keys:
-        img = img_as_float32(np.squeeze(image_dict[k]))
-        msk = label(np.squeeze(gt_dict[k]) > 0).astype(np.int32)
-        if msk.max() == 0:
-            continue
-        imgs.append(img)
-        masks.append(msk)
-        count += 1
+    pretrained_path = Path(args.pretrained_model).expanduser()
+    if pretrained_path.is_file():
+        base_model = models.CellposeModel(
+            gpu=not args.cpu,
+            pretrained_model=str(pretrained_path.resolve()),
+        )
+    else:
+        base_model = models.CellposeModel(
+            gpu=not args.cpu,
+            model_type=args.pretrained_model,
+        )
+    model_path, _, _ = cp_train.train_seg(
+        base_model.net,
+        train_data=x_train,
+        train_labels=y_train,
+        test_data=x_val,
+        test_labels=y_val,
+        channels=[0, 0],
+        channel_axis=0,
+        n_epochs=args.epochs,
+        learning_rate=args.learning_rate,
+        normalize=True,
+        compute_flows=True,
+        rescale=True,
+        min_train_masks=1,
+        save_path=str(output_dir),
+        model_name=model_name,
+    )
+    print(f"Done. Model saved at: {model_path}")
 
-    print(f"[{dataset}] After dropping empty masks: {count}")
 
-print(f"\nTotal samples across all selected datasets: {len(imgs)}")
-
-# ─── 4. TRAIN / VAL SPLIT ─────────────────────────────────
-random.seed(0)
-idx = list(range(len(imgs)))
-random.shuffle(idx)
-n_val = max(1, int(0.1 * len(imgs)))
-
-X_train = [imgs[i][np.newaxis] for i in idx[n_val:]]
-Y_train = [masks[i]            for i in idx[n_val:]]
-X_val   = [imgs[i][np.newaxis] for i in idx[:n_val]]
-Y_val   = [masks[i]            for i in idx[:n_val]]
-
-print(f"Train: {len(X_train)} | Val: {len(X_val)}")
-
-# ─── 5. FINE-TUNE ─────────────────────────────────────────
-base_model = models.CellposeModel(gpu=True, pretrained_model=PRETRAINED_MODEL)
-
-model_path, _, _ = cp_train.train_seg(
-    base_model.net,
-    train_data=X_train,  train_labels=Y_train,
-    test_data=X_val,     test_labels=Y_val,
-    channels=[0, 0],     channel_axis=0,
-    n_epochs=100,        learning_rate=1e-5,
-    normalize=True,      compute_flows=True,
-    rescale=True,
-    min_train_masks=1,
-    save_path=SAVE_DIR,
-    model_name=MODEL_NAME
-)
-
-print("Done! Model saved at:", model_path)
+if __name__ == "__main__":
+    main()

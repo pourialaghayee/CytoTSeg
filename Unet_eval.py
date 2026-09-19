@@ -10,6 +10,8 @@ import json
 import time
 import pickle
 import math
+import argparse
+from pathlib import Path
 from typing import Dict, Any, List, Tuple
 
 import numpy as np
@@ -21,10 +23,10 @@ import torch.nn as nn
 # USER CONFIGURATION (EDIT HERE)
 # ============================================================================
 
-WORK_DIR   = "/home/ubuntu/CytoTSeg-code/Preparing_ETH_data_for_submission/Train_Test_split/"
-TEST_PKL  = "/home/ubuntu/CytoTSeg-code/Preparing_ETH_data_for_submission/Train_Test_split/Test_data_cyto2_finetuned_400_clean_SINGLE_normalized.pkl"
-OUTPUT_PKL = "/home/ubuntu/CytoTSeg-code/Preparing_ETH_data_for_submission/Train_Test_split/Test_data_cyto2_finetuned_400_clean_SINGLE_unet_preds.pkl"
-STATS_TXT  = "/home/ubuntu/CytoTSeg-code/Preparing_ETH_data_for_submission/Train_Test_split/_inference_stats_400_mbar.txt"
+WORK_DIR   = ""
+TEST_PKL   = ""
+OUTPUT_PKL = ""
+STATS_TXT  = ""
 
 BATCH_SIZE = 32
 PAD_MODE   = "reflect"  # reflect|edge|constant
@@ -274,9 +276,10 @@ def load_config_and_model(work_dir: str):
         raise ValueError(f"Unknown architecture: {architecture}")
 
     ckpt = cfg.get("checkpoint_full_path") or cfg.get("checkpointfullpath")
-    if ckpt is None:
-        ckpt_name = cfg.get("checkpoint", "best_model.pth")
-        ckpt = os.path.join(work_dir, "checkpoints", ckpt_name)
+    ckpt_name = cfg.get("checkpoint", "best_model.pth")
+    portable_ckpt = os.path.join(work_dir, "checkpoints", ckpt_name)
+    if ckpt is None or not os.path.exists(ckpt):
+        ckpt = portable_ckpt
 
     if not os.path.exists(ckpt):
         raise FileNotFoundError(f"Checkpoint not found: {ckpt}")
@@ -322,7 +325,49 @@ def extract_patient_images_and_gts(patient_data: Dict[str, Any]):
 # MAIN EVALUATION
 # ============================================================================
 
-def main():
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description="Run a trained CytoTSeg U-Net on a patient-grouped test pickle."
+    )
+    parser.add_argument("--work-dir", type=Path, required=True)
+    parser.add_argument("--test-pkl", type=Path, required=True)
+    parser.add_argument("--output-pkl", type=Path, required=True)
+    parser.add_argument("--stats-txt", type=Path, help="Runtime TSV output path.")
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--pad-mode", choices=("reflect", "edge", "constant"), default="reflect")
+    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
+    return parser
+
+
+def main(argv=None):
+    global WORK_DIR, TEST_PKL, OUTPUT_PKL, STATS_TXT, BATCH_SIZE, PAD_MODE, DEVICE
+    args = build_parser().parse_args(argv)
+    WORK_DIR = str(args.work_dir.expanduser().resolve())
+    TEST_PKL = str(args.test_pkl.expanduser().resolve())
+    OUTPUT_PKL = str(args.output_pkl.expanduser().resolve())
+    STATS_TXT = str(
+        args.stats_txt.expanduser().resolve()
+        if args.stats_txt
+        else Path(OUTPUT_PKL).with_name("inference_stats.tsv")
+    )
+    BATCH_SIZE = args.batch_size
+    PAD_MODE = args.pad_mode
+    if BATCH_SIZE < 1:
+        raise ValueError("--batch-size must be at least 1.")
+    if not Path(TEST_PKL).is_file():
+        raise FileNotFoundError(f"Test pickle not found: {TEST_PKL}")
+    if args.device == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA was requested but PyTorch cannot access a CUDA device.")
+    if args.device == "cpu":
+        DEVICE = torch.device("cpu")
+    elif args.device == "cuda":
+        DEVICE = torch.device("cuda")
+    else:
+        DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    Path(OUTPUT_PKL).parent.mkdir(parents=True, exist_ok=True)
+    Path(STATS_TXT).parent.mkdir(parents=True, exist_ok=True)
+
     print("=" * 80)
     print("U-NET EVALUATION - COMPREHENSIVE SEARCH COMPATIBLE")
     print("=" * 80)

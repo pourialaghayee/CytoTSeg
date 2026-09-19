@@ -10,32 +10,13 @@ ETH DC_TSeg Transition Script (Cellpose -> U-Net train/test pickles)
 - Saves: Test_data, Train_data, config.json, split lists, run_log
 """
 
-import os, json, time, pickle, random
+import os, json, time, pickle, random, argparse
 from pathlib import Path
 import numpy as np
 
 
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
-BASE_PATH = "/mnt/lustre/home/claassen/clala950/DC-TSeg/Data/ICellCNN"
-INPUT_PKL = "patient_data_cyto2_finetuned_clean.pkl"
-
-IMAGE_KEY = "normalized_images"   # or 'images', 'normalized_images
-MASK_KEY  = "cyto2_finetuned_clean"
-
-RANDOM_SEED = 42
-TEST_RATIO  = 0.95        # fraction of patients used as test per class
-                          # e.g. 0.95 with 19 patients -> 1 train, 18 test per class
-                          # (ignored when SINGLE_PATIENT_TRAIN = True)
-
-# If True : exactly 1 CLL + 1 Control (largest image count) -> TRAIN, rest -> TEST
-# If False: use TEST_RATIO to determine how many largest patients go to TRAIN
-SINGLE_PATIENT_TRAIN = True
-
 CLL_PREFIX     = "CLL_"
 CONTROL_PREFIX = "Control_"
-# =============================================================================
 
 
 def convert_labeled_to_binary(mask_labeled):
@@ -171,12 +152,48 @@ def build_train_test(db, image_key, mask_key, test_ratio, random_seed,
     return test_data, train_data, split_info, stats, skipped
 
 
-def main():
-    base_path  = Path(BASE_PATH)
-    input_path = base_path / INPUT_PKL
-    assert input_path.exists(), f"Not found: {input_path}"
+def build_parser():
+    parser = argparse.ArgumentParser(
+        description="Create patient-separated U-Net train/test pickle files."
+    )
+    parser.add_argument("--input", type=Path, required=True, help="Cleaned patient pickle.")
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--train-output", default="train.pkl")
+    parser.add_argument("--test-output", default="test.pkl")
+    parser.add_argument("--image-key", default="normalized_images")
+    parser.add_argument("--mask-key", default="cyto2_finetuned_clean")
+    parser.add_argument("--random-seed", type=int, default=42)
+    parser.add_argument("--test-ratio", type=float, default=0.95)
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--single-patient-train",
+        dest="single_patient_train",
+        action="store_true",
+        help="Use the largest CLL and Control patient for training (default).",
+    )
+    mode.add_argument(
+        "--ratio-split",
+        dest="single_patient_train",
+        action="store_false",
+        help="Use --test-ratio instead of the single-patient strategy.",
+    )
+    parser.set_defaults(single_patient_train=True)
+    parser.add_argument("--cll-prefix", default="CLL_")
+    parser.add_argument("--control-prefix", default="Control_")
+    return parser
 
-    out_dir = base_path / "Train_tes_split_smaller_model_normal"
+
+def main(argv=None):
+    global CLL_PREFIX, CONTROL_PREFIX
+    args = build_parser().parse_args(argv)
+    input_path = args.input.expanduser().resolve()
+    out_dir = args.output_dir.expanduser().resolve()
+    if not input_path.is_file():
+        raise FileNotFoundError(f"Input pickle not found: {input_path}")
+    if not 0.0 <= args.test_ratio < 1.0:
+        raise ValueError("--test-ratio must be in [0, 1).")
+    CLL_PREFIX = args.cll_prefix
+    CONTROL_PREFIX = args.control_prefix
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # --- load ---
@@ -189,16 +206,15 @@ def main():
     # --- build ---
     t1 = time.time()
     test_data, train_data, split_info, stats, skipped = build_train_test(
-        db, IMAGE_KEY, MASK_KEY, TEST_RATIO, RANDOM_SEED,
-        single_patient_train=SINGLE_PATIENT_TRAIN
+        db, args.image_key, args.mask_key, args.test_ratio, args.random_seed,
+        single_patient_train=args.single_patient_train
     )
     build_s = time.time() - t1
 
     # --- save pickles ---
     t2 = time.time()
-    mode_tag   = "SINGLE" if SINGLE_PATIENT_TRAIN else f"ratio{int(TEST_RATIO * 100)}"
-    test_file  = out_dir / f"Test_data_{MASK_KEY}_{mode_tag}.pkl"
-    train_file = out_dir / f"Train_data_{MASK_KEY}_{mode_tag}.pkl"
+    test_file  = out_dir / args.test_output
+    train_file = out_dir / args.train_output
 
     with open(test_file,  "wb") as f: pickle.dump(test_data,  f, protocol=pickle.HIGHEST_PROTOCOL)
     with open(train_file, "wb") as f: pickle.dump(train_data, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -212,11 +228,11 @@ def main():
     config = {
         "input_path":           str(input_path),
         "output_dir":           str(out_dir),
-        "image_key":            IMAGE_KEY,
-        "mask_key":             MASK_KEY,
-        "random_seed":          RANDOM_SEED,
-        "test_ratio":           TEST_RATIO,
-        "single_patient_train": SINGLE_PATIENT_TRAIN,
+        "image_key":            args.image_key,
+        "mask_key":             args.mask_key,
+        "random_seed":          args.random_seed,
+        "test_ratio":           args.test_ratio,
+        "single_patient_train": args.single_patient_train,
     }
     with open(out_dir / "config.json",    "w") as f: json.dump(config, f, indent=2)
     with open(out_dir / "run_stats.json", "w") as f: json.dump({
@@ -228,10 +244,10 @@ def main():
     }, f, indent=2)
 
     # --- log ---
-    if SINGLE_PATIENT_TRAIN:
+    if args.single_patient_train:
         mode_str = "SINGLE_PATIENT_TRAIN  (1 largest CLL + 1 largest Control -> train)"
     else:
-        mode_str = (f"TEST_RATIO={TEST_RATIO}  "
+        mode_str = (f"TEST_RATIO={args.test_ratio}  "
                     f"(top-{stats['n_train_per_class']} largest per class -> train, rest -> test)")
 
     train_counts_str = "  ".join(
@@ -241,8 +257,8 @@ def main():
     log = [
         "TRAIN/TEST SPLIT LOG", "=" * 70,
         f"Input      : {input_path}",
-        f"Image key  : {IMAGE_KEY}",
-        f"Mask key   : {MASK_KEY}",
+        f"Image key  : {args.image_key}",
+        f"Mask key   : {args.mask_key}",
         f"Mode       : {mode_str}",
         f"Selection  : largest image count first",
         "",
@@ -276,4 +292,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
